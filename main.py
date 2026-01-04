@@ -128,35 +128,58 @@ def gold_full(city: str = Query(..., min_length=2)):
         return cached
 
     sql = """
-    WITH latest AS (
-        SELECT price_24k, price_22k, price_18k,
-               recorded_on, recorded_at, source
-        FROM city_slab_map c
-        JOIN gold_price_slabs s USING (slab_name)
-        WHERE LOWER(c.city_name) = LOWER(%s)
-        ORDER BY recorded_on DESC
-        LIMIT 1
-    ),
-    history AS (
-        SELECT recorded_on, price_24k, price_22k, price_18k
-        FROM city_slab_map c
-        JOIN gold_price_slabs s USING (slab_name)
-        WHERE LOWER(c.city_name) = LOWER(%s)
-        ORDER BY recorded_on DESC
-        LIMIT 7
-    )
-    SELECT *,
-        json_agg(
-            json_build_object(
-                'date', recorded_on,
-                '24K', price_24k,
-                '22K', price_22k,
-                '18K', price_18k
-            ) ORDER BY recorded_on
+   WITH latest AS (
+    SELECT
+        price_24k,
+        price_22k,
+        price_18k,
+        recorded_on,
+        recorded_at,
+        source
+    FROM city_slab_map c
+    JOIN gold_price_slabs s USING (slab_name)
+    WHERE LOWER(c.city_name) = LOWER(%s)
+    ORDER BY recorded_on DESC
+    LIMIT 1
+),
+history AS (
+    SELECT
+        recorded_on,
+        price_24k,
+        price_22k,
+        price_18k
+    FROM city_slab_map c
+    JOIN gold_price_slabs s USING (slab_name)
+    WHERE LOWER(c.city_name) = LOWER(%s)
+    ORDER BY recorded_on DESC
+    LIMIT 7
+)
+SELECT
+    latest.price_24k,
+    latest.price_22k,
+    latest.price_18k,
+    latest.recorded_on,
+    latest.recorded_at,
+    latest.source,
+    json_agg(
+        json_build_object(
+            'date', history.recorded_on,
+            '24K', history.price_24k,
+            '22K', history.price_22k,
+            '18K', history.price_18k
         )
-    FROM latest, history
-    GROUP BY price_24k, price_22k, price_18k,
-             recorded_on, recorded_at, source;
+        ORDER BY history.recorded_on
+    ) AS history
+FROM latest
+JOIN history ON true
+GROUP BY
+    latest.price_24k,
+    latest.price_22k,
+    latest.price_18k,
+    latest.recorded_on,
+    latest.recorded_at,
+    latest.source;
+
     """
 
     try:
