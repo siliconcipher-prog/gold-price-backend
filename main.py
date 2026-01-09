@@ -39,6 +39,7 @@ ALLOWED_ORIGINS = (
     else [
         "http://127.0.0.1:5500",
         "http://localhost:5500",
+        "http://192.168.1.10:5500",
     ]
 )
 
@@ -59,7 +60,13 @@ PG_DSN = os.getenv(
     "host=localhost port=5432 user=postgres password=1234 dbname=gold_tracker"
 )
 
-db_pool = ConnectionPool(PG_DSN, min_size=2, max_size=10)
+db_pool = ConnectionPool(
+    PG_DSN,
+    min_size=1,
+    max_size=3,
+    timeout=10,
+)
+
 
 # =========================
 # MIDDLEWARES
