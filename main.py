@@ -34,7 +34,10 @@ app = FastAPI(
 
 
 ALLOWED_ORIGINS = (
-    ["https://gold-price-frontend.netlify.app"]
+    [
+    "https://goldrateindia.co.in",
+    "https://www.goldrateindia.co.in",
+]
     if ENV == "prod"
     else [
         "http://127.0.0.1:5500",
