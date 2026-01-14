@@ -14,6 +14,9 @@ from cache import get_cache, set_cache
 from rate_limiter import is_rate_limited
 from rate_limiter import get_client_ip
 
+from pydantic import BaseModel
+from fastapi import Body
+
 ENV = os.getenv("ENV", "dev")
 
 # =========================
@@ -249,4 +252,47 @@ def cities(q: str = Query(..., min_length=2)):
 
 @app.get("/health")
 def health():
+    return {"status": "ok"}
+
+
+# =========================
+# Feedback
+# =========================
+
+
+class FeedbackRequest(BaseModel):
+    city: str | None = None
+    helpful: bool
+    message: str | None = None
+    page_url: str
+
+@app.post("/api/v1/feedback")
+def submit_feedback(
+    data: FeedbackRequest,
+    request: Request
+):
+    ip = get_client_ip(request)
+    ua = request.headers.get("user-agent", "")
+
+    # simple rate limit: 5 feedbacks / day / IP
+    if is_rate_limited(f"feedback:{ip}", 5, 86400):
+        raise HTTPException(429, "Too many submissions")
+
+    sql = """
+    INSERT INTO user_feedback
+    (city, helpful, message, page_url, user_agent, ip_address)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    """
+
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                data.city,
+                data.helpful,
+                data.message,
+                data.page_url,
+                ua,
+                ip
+            ))
+
     return {"status": "ok"}
