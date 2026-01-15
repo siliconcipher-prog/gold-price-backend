@@ -14,8 +14,10 @@ from cache import get_cache, set_cache
 from rate_limiter import is_rate_limited
 from rate_limiter import get_client_ip
 
-from pydantic import BaseModel
 from fastapi import Body
+
+from pydantic import BaseModel, Field, HttpUrl
+
 
 ENV = os.getenv("ENV", "dev")
 
@@ -45,16 +47,16 @@ ALLOWED_ORIGINS = (
     else [
         "http://127.0.0.1:5500",
         "http://localhost:5500",
-        "http://192.168.1.10:5500",
+        "http://192.168.1.9:5500",
     ]
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 # =========================
@@ -259,12 +261,12 @@ def health():
 # Feedback
 # =========================
 
-
 class FeedbackRequest(BaseModel):
-    city: str | None = None
+    city: str | None = Field(None, max_length=50)
     helpful: bool
-    message: str | None = None
-    page_url: str
+    message: str | None = Field(None, max_length=500)
+    page_url: HttpUrl
+
 
 @app.post("/api/v1/feedback")
 def submit_feedback(
@@ -274,9 +276,18 @@ def submit_feedback(
     ip = get_client_ip(request)
     ua = request.headers.get("user-agent", "")
 
-    # simple rate limit: 5 feedbacks / day / IP
+    # 🔒 Origin validation (MUST be inside request)
+    origin = request.headers.get("origin")
+    if ENV == "prod" and origin not in ALLOWED_ORIGINS:
+        raise HTTPException(403, "Invalid origin")
+
+    # 🔒 Rate limit: 5 feedbacks/day/IP
     if is_rate_limited(f"feedback:{ip}", 5, 86400):
         raise HTTPException(429, "Too many submissions")
+
+    # 🧼 Normalize user input
+    message = data.message.strip() if data.message else None
+    city = data.city.strip().title() if data.city else None
 
     sql = """
     INSERT INTO user_feedback
@@ -284,15 +295,20 @@ def submit_feedback(
     VALUES (%s, %s, %s, %s, %s, %s)
     """
 
-    with db_pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (
-                data.city,
-                data.helpful,
-                data.message,
-                data.page_url,
-                ua,
-                ip
-            ))
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    city,
+                    data.helpful,
+                    message,
+                    str(data.page_url),
+                    ua,
+                    ip
+                ))
+            conn.commit()
+    except PsycopgError:
+        logger.exception("Feedback insert failed")
+        raise HTTPException(500, "Unable to save feedback")
 
     return {"status": "ok"}
