@@ -1,0 +1,14 @@
+name: Keep Render API Alive
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"   # every 14 minutes
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          curl -fsS https://gold-price-backend-vod4.onrender.com/health || exit 0
