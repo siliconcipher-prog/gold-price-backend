@@ -2,7 +2,7 @@ name: Keep Render API Alive
 
 on:
   schedule:
-    - cron: "*/14 * * * *"   # every 14 minutes
+    - cron: "*/5 * * * *"  # Every 5 minutes
   workflow_dispatch:
 
 jobs:
@@ -11,4 +11,12 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: |
-          curl -fsS https://gold-price-backend-vod4.onrender.com/health || exit 0
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" https://gold-price-backend-vod4.onrender.com/health)
+          echo "Health check status: $STATUS"
+
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Health check failed with status $STATUS"
+            exit 1
+          else
+            echo "Health check succeeded with status $STATUS"
+          fi
