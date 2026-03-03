@@ -46,8 +46,8 @@ ALLOWED_ORIGINS = (
     if ENV == "prod"
     else [
         "http://127.0.0.1:5500",
-        "http://localhost:5500",
-        "http://192.168.1.6:5500",
+        "http://localhost:8888",
+        "http://192.168.1.15:5500",
     ]
 )
 
@@ -134,9 +134,12 @@ async def rate_limit_middleware(request: Request, call_next):
 # =========================
 
 @app.get("/api/v1/gold/full")
-def gold_full(city: str = Query(..., min_length=2)):
+def gold_full(
+    city: str = Query(..., min_length=2),
+    days: int = Query(7, ge=7, le=365)
+):
     city_key = city.lower().strip()
-    cache_key = f"gold:{city_key}"
+    cache_key = f"gold:{city_key}:{days}"
 
     cached = get_cache(cache_key)
     if cached:
@@ -167,7 +170,7 @@ history AS (
     JOIN gold_price_slabs s USING (slab_name)
     WHERE LOWER(c.city_name) = LOWER(%s)
     ORDER BY recorded_on DESC
-    LIMIT 7
+    LIMIT %s
 )
 SELECT
     latest.price_24k,
@@ -200,7 +203,7 @@ GROUP BY
     try:
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (city_key, city_key))
+                cur.execute(sql, (city_key, city_key, days))
                 row = cur.fetchone()
     except PsycopgError:
         raise DatabaseError()
